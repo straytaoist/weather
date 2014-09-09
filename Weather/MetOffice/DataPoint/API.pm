@@ -30,13 +30,14 @@ use Moose;
 use JSON;
 use LWP::Simple;
 
-use constant URL_BASE  => 'http://datapoint.metoffice.gov.uk/public/data';
+has URL_BASE => (is => 'ro', isa => 'Str', default => 'http://datapoint.metoffice.gov.uk/public/data');
 use constant DATATYPES => [ qw/json xml/ ];
 
 has api_key       => (is => 'ro', isa => 'Str');
 has datatype      => (is => 'ro', isa => 'Str');
 has image_info    => (is => 'rw', isa => 'HashRef[ArrayRef[Str]]');
 has forecast_info => (is => 'rw', isa => 'HashRef[ArrayRef[Str]]');
+has surface_pressure_info => (is => 'rw', isa => 'ArrayRef[HashRef]');
 
 # there has to be an easier way of doing this...
 around BUILDARGS => sub {
@@ -83,7 +84,7 @@ processed by the Met Office is once every fifteen minutes.)
 sub _fetch_images {
   my $self = shift;
   my $url = sprintf "%s/layer/wxobs/all/%s/capabilities?key=%s",
-    URL_BASE, $self->datatype, $self->api_key;
+    $self->URL_BASE, $self->datatype, $self->api_key;
   my $info = decode_json(get($url));
   my $base = $info->{Layers}->{BaseUrl}->{'$'};
   my %image_info;
@@ -124,7 +125,7 @@ the last available images.
 sub _fetch_forecast {
   my $self = shift;
   my $url = sprintf "%s/layer/wxfcs/all/%s/capabilities?key=%s",
-    URL_BASE, $self->datatype, $self->api_key;
+    $self->URL_BASE, $self->datatype, $self->api_key;
   my $info = decode_json(get($url));
   my %forecast_info;
   my $base = $info->{Layers}->{BaseUrl}->{'$'};
@@ -149,6 +150,35 @@ sub forecast_urls {
   return %{ $self->forecast_info };
 }
 
+=head1 surface_pressure
+
+  my @info = $weather->surface_pressure;
+
+In forecast period order. In a list. Which is different from the
+other calls. As I want them in order.
+
+=cut
+
+sub _fetch_surface_pressure {
+  my $self = shift;
+  my $url = sprintf "%s/image/wxfcs/surfacepressure/%s/capabilities?key=%s",
+    $self->URL_BASE, $self->datatype, $self->api_key;
+  my $info = decode_json(get($url));
+  my @sp;
+  for my $detail (sort { $a->{ForecastPeriod} <=> $b->{ForecastPeriod} }
+                  @{ $info->{BWSurfacePressureChartList}->{BWSurfacePressureChart} }) {
+   $detail->{ProductURI} =~ s/\{key\}/$self->api_key/e;
+   push @sp, $detail;
+  }
+  $self->surface_pressure_info([ @sp ]);
+}
+
+sub surface_pressure {
+  my $self = shift;
+  $self->_fetch_surface_pressure;
+  return @{ $self->surface_pressure_info };
+}
+
 =head1 MetOffice Datapoint
 
 You'll need to sign up, to get an API key. You can do that at:
@@ -161,6 +191,10 @@ users get raised blood pressure.)
 There are usage limits, so please read their T&Cs. No, seriously, do. I
 don't want them to withdraw this service, even if it is my
 tax dollah that pay for it.
+
+=head1 TODO
+
+Split this out into separate modules
 
 =cut
 
