@@ -18,7 +18,8 @@ use JSON; # ...and also?
 
 extends 'Weather::MetOffice::DataPoint::API';
 
-has total_sitelist => (is => 'rw', isa => 'HashRef[ArrayRef]');
+has total_sitelist   => (is => 'rw', isa => 'HashRef[ArrayRef]');
+has total_regionlist => (is => 'rw', isa => 'HashRef[Int]');
 
 =head2 sitelist
 
@@ -97,6 +98,64 @@ sub site_forecast {
     }
   }
   return @site_info;
+}
+
+=head2 regionlist
+
+  my %regions = $weather->regionlist;
+
+All the regions, so you get regional forecasts.
+
+=cut
+
+sub _fetch_regionlist {
+  my $self = shift;
+  my $url = sprintf "%s/txt/wxfcs/regionalforecast/%s/sitelist?key=%s",
+    $self->URL_BASE, $self->datatype, $self->api_key;
+  my $info = decode_json(get($url));
+  my %rl;
+  for my $detail (@{ $info->{Locations}->{Location} }) {
+    $rl{$detail->{'@name'}} = $detail->{'@id'};
+  }
+  $self->total_regionlist({ %rl });
+}
+
+sub regionlist {
+  my $self = shift;
+  $self->_fetch_regionlist unless $self->total_regionlist;
+  return %{ $self->total_regionlist };
+}
+
+=head2 region_forecast
+
+  my @forecast = $weather->region_forecast($region);
+
+Get the regional forecast, using a region. You can get
+those above.
+
+The list is in chronological order, most recent first.
+
+=cut
+
+sub region_forecast {
+  my ($self, $region) = @_;
+  my @r_info;
+  if (my $id = $self->total_regionlist->{$region || ''}) {
+    my $url = sprintf "%s/txt/wxfcs/regionalforecast/%s/%s?&key=%s",
+      $self->URL_BASE, $self->datatype, $id, $self->api_key;
+    my $info = decode_json(get($url));
+    for my $detail (@{ $info->{RegionalFcst}->{FcstPeriods}->{Period} }) {
+      $detail->{Paragraph} = [ $detail->{Paragraph} ] unless ref $detail->{Paragraph} eq 'ARRAY';
+      for my $more (@{ $detail->{Paragraph} }) {
+        $more->{title} =~ s/:$//;
+        push @r_info, {
+          title   => $more->{title},
+          summary => $more->{'$'},
+        };
+      }
+    }
+  }
+  return @r_info;
 }
 
 return qw/where is your head at/;

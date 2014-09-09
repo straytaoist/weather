@@ -5,7 +5,7 @@ use warnings;
 
 use Data::Dumper;
 
-use Test::More tests => 10;
+use Test::More tests => 12;
 
 use_ok 'Weather::MetOffice::DataPoint::API';
 
@@ -36,5 +36,11 @@ isa_ok my $weather = Weather::MetOffice::DataPoint::API->new(api_key => $api_key
 
 {
   my @surpress = $weather->surface_pressure;
-  is scalar @surpress => 8, 'Eight surface pressure entries';
+  ok scalar @surpress > 1, 'Some surface pressure entries';
+}
+
+{
+  my %extremes = $weather->extremes;
+  is scalar keys %extremes => 17, '17 extreme data points';
+  is scalar keys $extremes{'Northern Ireland'} => 6, '6 regional datapoints';
 }

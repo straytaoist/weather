@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 11;
+use Test::More tests => 17;
 
 use_ok 'Weather::MetOffice::DataPoint::API::Location';
 
@@ -31,9 +31,26 @@ isa_ok my $weather = Weather::MetOffice::DataPoint::API::Location->new(api_key =
 {
   my @info = $weather->site_forecast;
   is scalar @info => 0, 'No data for nowhere';
+  @info = $weather->site_forecast('123456,123456');
+  is scalar @info => 0, 'No data for bogus lat/lon';
   @info = $weather->site_forecast('52.1937,0.1268');
   is scalar @info => 1, 'One only weather station in the Botanic Gardens. (I wonder where it is? I must look.)';
   is scalar keys %{ $info[0] } => 5, '5 days of data';
   my @keys = sort { $info[0]->{$a} cmp $info[0]->{$b} } keys %{ $info[0] };
-  is scalar @{ $info[0]->{$keys[-1]} } => 8, 'A reading every three hours';
+  is scalar @{ $info[0]->{$keys[1]} } => 8, 'A reading every three hours';
+}
+
+{
+  my %info = $weather->regionlist;
+  is scalar keys %info => 17, 'Seventeen regions';
+  is $info{ni} => 506, 'Norn Iron has an id of 506';
+}
+
+{
+  my @info = $weather->region_forecast;
+  is scalar @info => 0, 'No data for no region';
+  @info = $weather->region_forecast('MADEUP');
+  is scalar @info => 0, 'No data for made up region';
+  @info = $weather->region_forecast('ni');
+  is scalar @info => 6, 'Six forecasts';
 }

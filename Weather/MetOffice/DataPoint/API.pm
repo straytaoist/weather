@@ -33,11 +33,12 @@ use LWP::Simple;
 has URL_BASE => (is => 'ro', isa => 'Str', default => 'http://datapoint.metoffice.gov.uk/public/data');
 use constant DATATYPES => [ qw/json xml/ ];
 
-has api_key       => (is => 'ro', isa => 'Str');
-has datatype      => (is => 'ro', isa => 'Str');
-has image_info    => (is => 'rw', isa => 'HashRef[ArrayRef[Str]]');
-has forecast_info => (is => 'rw', isa => 'HashRef[ArrayRef[Str]]');
+has api_key               => (is => 'ro', isa => 'Str');
+has datatype              => (is => 'ro', isa => 'Str');
+has image_info            => (is => 'rw', isa => 'HashRef[ArrayRef[Str]]');
+has forecast_info         => (is => 'rw', isa => 'HashRef[ArrayRef[Str]]');
 has surface_pressure_info => (is => 'rw', isa => 'ArrayRef[HashRef]');
+has extremes_info         => (is => 'rw', isa => 'HashRef[HashRef]');
 
 # there has to be an easier way of doing this...
 around BUILDARGS => sub {
@@ -150,7 +151,7 @@ sub forecast_urls {
   return %{ $self->forecast_info };
 }
 
-=head1 surface_pressure
+=head2 surface_pressure
 
   my @info = $weather->surface_pressure;
 
@@ -177,6 +178,45 @@ sub surface_pressure {
   my $self = shift;
   $self->_fetch_surface_pressure;
   return @{ $self->surface_pressure_info };
+}
+
+=head2 extremes
+
+  my %extremes = $weather->extremes;
+
+Observed extremes of weather across the UK.
+
+Alas this is the extremes in terms of range, not extremes as in
+tornadoes and cyclones.
+
+=cut
+
+sub _fetch_extremes {
+  my $self = shift;
+  my $url = sprintf "%s/txt/wxobs/ukextremes/%s/latest?key=%s",
+    $self->URL_BASE, $self->datatype, $self->api_key;
+  my $info = decode_json(get($url));
+  my %extremes = ();
+  for my $detail (@{ $info->{UkExtremes}->{Regions}->{Region} }) {
+    $extremes{$detail->{name}} = {
+      region_id => $detail->{id},
+    };
+    for my $ext (@{ $detail->{Extremes}->{Extreme} }) {
+      $extremes{$detail->{name}}->{$ext->{type}} = {
+        unit    => $ext->{uom},
+        value   => $ext->{'$'},
+        where   => $ext->{locationName},
+        site_id => $ext->{locId},
+      };
+    }
+  }
+  $self->extremes_info({ %extremes });
+}
+
+sub extremes {
+  my $self = shift;
+  $self->_fetch_extremes;
+  return %{ $self->extremes_info };
 }
 
 =head1 MetOffice Datapoint
